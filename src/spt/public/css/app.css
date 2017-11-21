@@ -1,0 +1,66 @@
+body {
+    padding-top: 3.5rem;
+  }
+
+.hidden{
+    display: none;
+}
+
+.twt-wrapper .card-body form{
+    padding: 10px;
+}
+
+.twt-wrapper .card-body{
+    padding: 0;
+}
+
+.post{
+    padding: 10px;
+}
+
+.post:nth-child(2n){
+    background: rgba(0,0,0,0.05);
+}
+
+.media-body #postContent {
+    border-left: 1px solid lightgray;
+    padding-left: 10px;
+}
+
+.userTooltip{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 5px;
+    margin-top: 5px;
+}
+
+.userTooltip p{
+    margin-bottom: 0;
+}
+
+
+.user-header{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.user-header img{
+    margin-right: 20px;
+}
+
+
+.highlight {
+    background-color: #FFFF88;
+}
+
+#searchResult th, td{
+    text-align: center;
+
+}
+
+.tooltipNew{
+    color: rgb(139, 211, 255);
+    text-shadow: 0 0 5px #007bff;
+}
