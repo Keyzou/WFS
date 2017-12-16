@@ -1,0 +1,825 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">controllers/comment.go (100.0%)</option>
+				
+				<option value="file1">controllers/post.go (100.0%)</option>
+				
+				<option value="file2">controllers/user.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package controllers
+
+import(
+        "github.com/labstack/echo"
+        "net/http"
+        "models"
+        "github.com/jackc/pgx"
+        "github.com/jackc/pgx/pgtype"
+        "fmt"
+        "strconv"
+)
+
+func (c *Controller) CreateComment(context echo.Context) (err error)<span class="cov8" title="1">{
+        user := UserIDFromToken(context)
+        u := &amp;models.User{ID: user}        
+        comment := &amp;models.Comment{}
+
+        err = context.Bind(comment)
+        if err != nil</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid message"}
+        }</span>
+
+        <span class="cov8" title="1">if comment.Content == ""</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Content cannot be empty !"}
+        }</span>
+
+        <span class="cov8" title="1">var _id int
+        var username, email string
+        err = c.DB.QueryRow(`select id, username, email from users where id=$1`, u.ID).Scan(&amp;_id, &amp;username, &amp;email)
+
+        u.Username = username
+        u.Email = email
+
+        comment.Author = *u
+
+        var id int
+        var date pgtype.Timestamptz
+        err = c.DB.QueryRow(`insert into comments(author, content, date, likes, post_id) values($1, $2, now(), 0, $3) returning id, date`, comment.Author.ID, comment.Content, comment.PostID).Scan(&amp;id, &amp;date)
+        comment.ID = id
+        comment.Date = date.Time.Format("_2 January 2006 at 15:04:05")
+
+        return context.JSON(http.StatusCreated, comment)</span>
+}
+
+
+func (c *Controller) DeleteComment(context echo.Context) (err error) <span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        id, _ := strconv.Atoi(context.Param("id"))
+        comment := &amp;models.Comment{ID: id}
+
+        c.DB.Exec(`delete from comments where author=$1 and id=$2`, u, comment.ID)
+        
+        return context.NoContent(http.StatusOK)
+}</span>
+
+func (c *Controller) LikeComment(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        toLike := &amp;models.Comment{}
+
+        err = context.Bind(toLike)
+        if err != nil </span><span class="cov8" title="1">{
+                fmt.Println(err)
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "error"}
+        }</span>
+
+        <span class="cov8" title="1">err = c.DB.QueryRow(`select id from comments where id=$1`, toLike.ID).Scan(&amp;toLike.ID)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return echo.ErrNotFound
+                }</span>
+        }
+
+        <span class="cov8" title="1">liked := c.HasLikedComment(u, toLike.ID)
+        count := c.GetCommentLikes(toLike.ID)
+        if liked </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "already liked"}
+        }</span>
+
+        <span class="cov8" title="1">c.DB.Exec(`insert into comments_likes(user_id, comment_id) values($1, $2)`, u, toLike.ID)
+
+        toLike.Likes = count + 1
+        toLike.Liked = true
+
+        c.DB.Exec(`update comments set likes=$1 where id=$2`, toLike.Likes, toLike.ID)
+
+        return context.JSON(http.StatusOK, toLike)</span>
+}
+
+func (c *Controller) UnlikeComment(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        toLike := &amp;models.Comment{}
+
+        err = context.Bind(toLike)
+        if err != nil </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "error"}
+        }</span>
+
+        <span class="cov8" title="1">err = c.DB.QueryRow(`select id from comments where id=$1`, toLike.ID).Scan(&amp;toLike.ID)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return echo.ErrNotFound
+                }</span>
+        }
+
+        <span class="cov8" title="1">liked := c.HasLikedComment(u, toLike.ID)
+        count := c.GetCommentLikes(toLike.ID)
+        if !liked </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "already disliked"}
+        }</span>
+
+        <span class="cov8" title="1">c.DB.Exec(`delete from comments_likes where user_id=$1 and comment_id=$2`, u, toLike.ID)
+
+        toLike.Likes = count - 1
+        toLike.Liked = false
+
+        _, err = c.DB.Exec(`update comments set likes=$1 where id=$2`, toLike.Likes, toLike.ID)
+
+        return context.JSON(http.StatusOK, toLike)</span>
+}
+
+func (c *Controller) HasLikedComment(userid int, commentid int) (liked bool) <span class="cov8" title="1">{
+
+        var likes int
+        c.DB.QueryRow(`select count(*) from comments_likes where user_id=$1 and comment_id=$2`, userid, commentid).Scan(&amp;likes)
+        if likes &gt; 0 </span><span class="cov8" title="1">{
+                liked = true
+                return liked
+        }</span>
+        <span class="cov8" title="1">liked = false
+        return liked</span>
+}
+
+func (c *Controller) GetCommentLikes(commentid int) (likes int) <span class="cov8" title="1">{
+        c.DB.QueryRow(`select count(*) from comments_likes where comment_id=$1`, commentid).Scan(&amp;likes)
+
+        return likes
+}</span>
+
+func (c *Controller) GetComments(userid int, idPost int) (comments []*models.Comment)<span class="cov8" title="1">{
+        comments = []*models.Comment{}
+        rows, _ := c.DB.Query(`SELECT comments.id, comments.author, comments.content, comments.date, comments.post_id, users.email, users.username FROM comments JOIN users on comments.author=users.id AND comments.post_id=$1 ORDER BY date DESC`, idPost)
+        defer rows.Close()
+        for rows.Next() </span><span class="cov8" title="1">{
+                var id, author int
+                var post int
+                var content string
+                var date pgtype.Timestamptz
+                var userEmail string
+                var userName string
+                rows.Scan(&amp;id, &amp;author, &amp;content, &amp;date, &amp;post, &amp;userEmail, &amp;userName)
+
+                u := models.User{ID: author, Email: userEmail, Username: userName}
+
+                time := date.Time.Format("_2 January 2006 at 15:04:05")
+                comment := &amp;models.Comment{ID: id, Author: u, Content: content, Date: time, PostID: post}
+                comments = append(comments, comment)
+        }</span>
+        
+        <span class="cov8" title="1">for _, el := range comments </span><span class="cov8" title="1">{
+                el.Liked = c.HasLikedComment(userid, el.ID)
+                el.Likes = c.GetCommentLikes(el.ID)
+                el.Author.Followers = c.GetFollowersCount(el.Author.ID)
+                el.IsFollowingAuthor = c.isFollowing(userid, el.Author.ID)
+        }</span>
+        <span class="cov8" title="1">return comments</span>
+}</pre>
+		
+		<pre class="file" id="file1" style="display: none">package controllers
+
+import(
+        "models"
+        "github.com/labstack/echo"
+        "net/http"
+        "github.com/jackc/pgx"
+        "github.com/jackc/pgx/pgtype"
+        "fmt"
+        "html"
+        "strings"
+        "strconv"
+)
+
+func (c *Controller) CreatePost(co echo.Context) (err error) <span class="cov8" title="1">{
+        
+        u := &amp;models.User{ID: UserIDFromToken(co)}        
+        p := &amp;models.Post{Author: *u}
+        err = co.Bind(p)
+        fmt.Println(p)
+        if err != nil </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid request"}
+        }</span>
+
+        <span class="cov8" title="1">p.Content = strings.TrimSpace(p.Content)
+
+        if p.Content == "" </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid message"}
+        }</span>
+
+        <span class="cov8" title="1">p.Content = html.EscapeString(p.Content)
+
+        fmt.Println(u.ID)
+
+        var _id int
+        var username, email string
+        err = c.DB.QueryRow(`select id, username, email from users where id=$1`, u.ID).Scan(&amp;_id, &amp;username, &amp;email)
+
+        u.Username = username
+        u.Email = email
+
+        p.Author = *u
+
+        var id int
+        var date pgtype.Timestamptz
+        err = c.DB.QueryRow(`insert into posts(author, content, date, likes) values($1, $2, now(), 0) returning id, date`, p.Author.ID, p.Content).Scan(&amp;id, &amp;date)
+        p.ID = id
+        p.Date = date.Time.Format("_2 January 2006 at 15:04:05")
+
+        return co.JSON(http.StatusCreated, p)</span>
+}
+
+func (c *Controller) LikePost(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        toLike := &amp;models.Post{}
+
+        err = context.Bind(toLike)
+        if err != nil </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid request"}
+        }</span>
+
+        <span class="cov8" title="1">err = c.DB.QueryRow(`select id from posts where id=$1`, toLike.ID).Scan(&amp;toLike.ID)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return echo.ErrNotFound
+                }</span>
+        }
+
+        <span class="cov8" title="1">liked := c.HasLikedPost(u, toLike.ID)
+        count := c.GetPostLikes(toLike.ID)
+        if liked </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "already liked"}
+        }</span>
+
+        <span class="cov8" title="1">c.DB.Exec(`insert into posts_likes(user_id, post_id) values($1, $2)`, u, toLike.ID)
+
+        toLike.Likes = count + 1
+        toLike.Liked = true
+
+        c.DB.Exec(`update posts set likes=$1 where id=$2`, toLike.Likes, toLike.ID)
+
+        return context.JSON(http.StatusOK, toLike)</span>
+}
+
+func (c *Controller) UnlikePost(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        toLike := &amp;models.Post{}
+
+        err = context.Bind(toLike)
+        if err != nil </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid request"}
+        }</span>        
+
+        <span class="cov8" title="1">err = c.DB.QueryRow(`select id from posts where id=$1`, toLike.ID).Scan(&amp;toLike.ID)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return echo.ErrNotFound
+                }</span>
+        }
+
+        <span class="cov8" title="1">liked := c.HasLikedPost(u, toLike.ID)
+        count := c.GetPostLikes(toLike.ID)
+        if !liked </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "already disliked"}
+        }</span>
+
+        <span class="cov8" title="1">c.DB.Exec(`delete from posts_likes where user_id=$1 and post_id=$2`, u, toLike.ID)
+
+
+        toLike.Likes = count - 1
+        toLike.Liked = false
+
+        c.DB.Exec(`update posts set likes=$1 where id=$2`, toLike.Likes, toLike.ID)
+
+        return context.JSON(http.StatusOK, toLike)</span>
+}
+
+func (c *Controller) DeletePost(context echo.Context) (err error) <span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        id, _ := strconv.Atoi(context.Param("id"))
+        post := &amp;models.Post{ID: id}
+
+        fmt.Println(post.ID)
+        c.DB.Exec(`delete from posts where author=$1 and id=$2`, u, post.ID)
+
+        return context.NoContent(http.StatusOK)
+}</span>
+
+func (c *Controller) HasLikedPost(userid int, postid int) (liked bool) <span class="cov8" title="1">{
+
+        var likes int
+        c.DB.QueryRow(`select count(*) from posts_likes where user_id=$1 and post_id=$2`, userid, postid).Scan(&amp;likes)
+        if likes &gt; 0 </span><span class="cov8" title="1">{
+                liked = true
+                return liked
+        }</span>
+        <span class="cov8" title="1">liked = false
+        return liked</span>
+}
+
+func (c *Controller) GetPostLikes(postid int) (likes int) <span class="cov8" title="1">{
+        c.DB.QueryRow(`select count(*) from posts_likes where post_id=$1`, postid).Scan(&amp;likes)
+        return likes
+}</span>
+        
+
+func (c *Controller) GetPosts(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := &amp;models.User{ID: UserIDFromToken(context)}        
+
+        posts := []*models.Post{}
+        rows, _ := c.DB.Query(`SELECT posts.id, posts.author, posts.content, posts.date, users.email, users.username FROM posts LEFT JOIN users on posts.author=users.id AND (posts.author=$1 OR posts.author IN (SELECT user_followed FROM followers WHERE user_following=$1)) ORDER BY date DESC`, u.ID)
+        defer rows.Close()
+        for rows.Next() </span><span class="cov8" title="1">{
+                var id, author int
+                var content string
+                var date pgtype.Timestamptz
+                var userEmail string
+                var userName string
+                rows.Scan(&amp;id, &amp;author, &amp;content, &amp;date, &amp;userEmail, &amp;userName)
+                u := models.User{ID: author, Email: userEmail, Username: userName}
+
+                time := date.Time.Format("_2 January 2006 at 15:04:05")
+                post := &amp;models.Post{ID: id, Author: u, Content: content, Date: time}
+                fmt.Println(post)
+                posts = append(posts, post)
+                fmt.Println(posts)
+        }</span>
+
+
+        <span class="cov8" title="1">for _, el := range posts </span><span class="cov8" title="1">{
+                el.Comments = c.GetComments(u.ID, el.ID)
+                el.Author.Followers = c.GetFollowersCount(el.Author.ID)
+                el.Liked = c.HasLikedPost(u.ID, el.ID)
+                el.Likes = c.GetPostLikes(el.ID)
+                el.IsFollowingAuthor = c.isFollowing(u.ID, el.Author.ID)
+        }</span>        
+
+
+        <span class="cov8" title="1">return context.JSON(http.StatusOK, posts)</span>
+}</pre>
+		
+		<pre class="file" id="file2" style="display: none">package controllers
+
+import(
+        "models"
+        "github.com/labstack/echo"
+        "github.com/dgrijalva/jwt-go"
+        "net/http"
+        "golang.org/x/crypto/bcrypt"
+        "github.com/jackc/pgx"
+        "time"
+        "fmt"
+        "strconv"
+        "strings"
+        "github.com/asaskevich/govalidator"
+)
+
+func (c *Controller) Signup(context echo.Context) (err error) <span class="cov8" title="1">{
+         u := &amp;models.User{}
+         err = context.Bind(u); 
+         if err != nil </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid request"}
+         }</span>
+
+         <span class="cov8" title="1">u.Email = strings.TrimSpace(u.Email)
+         u.Username = strings.TrimSpace(u.Username)
+         u.Password = strings.TrimSpace(u.Password)
+
+         if u.Email == "" || u.Username == "" || u.Password == "" </span><span class="cov8" title="1">{
+                 return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid email, password, or username !"}
+         }</span>
+
+         <span class="cov8" title="1">if !govalidator.IsEmail(u.Email) || !govalidator.IsAlphanumeric(u.Username)</span><span class="cov8" title="1">{
+                        return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid email, password, or username !"}
+         }</span>
+
+         <span class="cov8" title="1">u.Email = strings.ToLower(u.Email)
+         u.Username = strings.ToLower(u.Username)
+
+         if len(u.Username) &lt; 3 </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Username must be at least 3 characters long !"}
+         }</span>
+         <span class="cov8" title="1">if len(u.Password) &lt; 6 </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Password must be at least 6 characters long !"}
+         }</span>
+                 
+         <span class="cov8" title="1">if !c.isUsernameUnique(u.Username)</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Username already taken !"}
+        }</span>
+
+        <span class="cov8" title="1">if !c.isEmailUnique(u.Email)</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Email already taken !"}
+        }</span>
+
+        <span class="cov8" title="1">u.HashPassword()
+
+        var id int
+        err = c.DB.QueryRow(`insert into users (username, email, password) VALUES($1, $2, $3) returning id`, u.Username, u.Email, u.Password).Scan(&amp;id)
+        u.ID = id
+        u.Password = ""
+        return context.JSON(http.StatusCreated, u)</span>
+}
+
+
+func (c *Controller) Login(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := &amp;models.User{}
+        err = context.Bind(u)
+        if err != nil</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid request"}
+        }</span>
+
+        <span class="cov8" title="1">u.Email = strings.TrimSpace(u.Email)
+        u.Password = strings.TrimSpace(u.Password)
+
+        if u.Email == "" || u.Password == "" </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid email or password "}
+        }</span>
+
+        <span class="cov8" title="1">if !govalidator.IsEmail(u.Email)</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid email or password "}
+        }</span>
+
+        <span class="cov8" title="1">u.Email = strings.ToLower(u.Email)
+                
+
+        var id int
+        var username, password string
+        err = c.DB.QueryRow(`select id, username, password from users where email=$1`, u.Email).Scan(&amp;id, &amp;username, &amp;password)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return &amp;echo.HTTPError{Code: http.StatusUnauthorized, Message: "invalid email or password"}
+                }</span>
+        }
+
+        <span class="cov8" title="1">if bcrypt.CompareHashAndPassword([]byte(password), []byte(u.Password)) != nil </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusUnauthorized, Message: "invalid email or password"}
+        }</span>
+
+        <span class="cov8" title="1">token := jwt.New(jwt.SigningMethodHS256)
+
+        claims := token.Claims.(jwt.MapClaims)
+        claims["id"] = id
+        claims["username"] = username
+        claims["expiring"] = time.Now().Add(time.Hour * 72).Unix()
+        u.Email = ""
+        u.Password = ""
+        u.Token, err = token.SignedString([]byte(JWTSecretKey))
+        return context.JSON(http.StatusOK, u)</span>
+}
+
+func (c *Controller) UpdateUser(context echo.Context) (err error)<span class="cov8" title="1">{
+        id := UserIDFromToken(context)
+        u := &amp;models.User{}
+        err = context.Bind(u)
+        if err != nil</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid request"}
+        }</span>
+
+        <span class="cov8" title="1">u.Username = strings.TrimSpace(u.Username)
+        u.Password = strings.TrimSpace(u.Password)
+
+        if !govalidator.IsAlphanumeric(u.Username)</span><span class="cov8" title="1">{
+                 return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "invalid username !"}
+        }</span>
+
+        <span class="cov8" title="1">u.Username = strings.ToLower(u.Username)
+
+        if u.Password == "" &amp;&amp; u.Username == ""</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "no changes"}
+        }</span>
+
+        <span class="cov8" title="1">if len(u.Username) &lt; 3 &amp;&amp; u.Username != "" </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Username must be at least 3 characters long !"}
+         }</span>
+         <span class="cov8" title="1">if len(u.Password) &lt; 6 &amp;&amp; u.Password != "" </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Password must be at least 6 characters long !"}
+         }</span>
+        
+
+        <span class="cov8" title="1">if !c.isUsernameUnique(u.Username)</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "Username already taken !"}
+        }</span>
+
+        <span class="cov8" title="1">u.HashPassword()
+
+        if u.Username != ""</span><span class="cov8" title="1">{
+                c.DB.Exec(`update users set username=$1 where id=$2`, u.Username, id)
+        }</span>
+        <span class="cov8" title="1">if u.Password != ""</span><span class="cov8" title="1">{
+                c.DB.Exec(`update users set password=$1 where id=$2`, u.Password, id)
+        }</span>
+
+        <span class="cov8" title="1">return context.JSON(http.StatusOK, &amp;models.User{Username: u.Username})</span>
+}
+
+func (c *Controller) QueryUsers(context echo.Context) (err error)<span class="cov8" title="1">{
+        query := context.Param("query")
+        users := []*models.User{}
+
+        query = strings.TrimSpace(query)
+
+        if query == "" </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "no query"}
+        }</span>
+
+        <span class="cov8" title="1">rows, err := c.DB.Query(`select id, username from users where username like '%'||$1||'%' or email like '%'||$1||'%'`, query)
+
+        defer rows.Close()
+        for rows.Next() </span><span class="cov8" title="1">{
+                var id int
+                var username string
+                rows.Scan(&amp;id, &amp;username)
+                u := &amp;models.User{ID: id, Username: username}
+
+                users = append(users, u)
+        }</span>
+
+        <span class="cov8" title="1">return context.JSON(http.StatusOK, users)</span>
+}
+
+func (c *Controller) Follow(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        if !govalidator.IsInt(context.Param("id")) </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "id must be int"}
+        }</span>
+        <span class="cov8" title="1">toFollow, _ := strconv.Atoi(context.Param("id"))
+        if (toFollow == u)</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "cant follow yourself"}
+        }</span>
+        <span class="cov8" title="1">err = c.DB.QueryRow(`select id from users where id=$1`, toFollow).Scan(&amp;toFollow)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return echo.ErrNotFound
+                }</span>
+        }
+
+        <span class="cov8" title="1">var count int
+        err = c.DB.QueryRow(`select count(*) from followers where user_followed=$1 and user_following=$2`, toFollow, u).Scan(&amp;count)
+
+        if count &gt; 0 </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "already following"}
+        }</span>
+
+        <span class="cov8" title="1">c.DB.Exec(`insert into followers(user_followed, user_following) values($1, $2)`, toFollow, u)
+
+
+        return context.JSON(http.StatusOK, &amp;models.User{Followers: count+1})</span>
+}
+
+func (c *Controller) isUsernameUnique(username string) (usernameUnique bool)<span class="cov8" title="1">{
+                var count int
+                c.DB.QueryRow(`select count(*) from users where username=$1`, username).Scan(&amp;count)
+                return count == 0
+        }</span>
+
+func (c *Controller) isEmailUnique(email string) (emailUnique bool)<span class="cov8" title="1">{
+                var count int
+                c.DB.QueryRow(`select count(*) from users where email LIKE '%'||$1||'%'`, email).Scan(&amp;count)
+                return count == 0
+        }</span>
+
+func (c *Controller) GetFollowersCount(userid int) (followers int)<span class="cov8" title="1">{
+
+        c.DB.QueryRow(`select count(*) from followers where user_followed=$1`, userid).Scan(&amp;followers)
+        return followers
+}</span>
+
+func (c *Controller) GetFollowers(context echo.Context) (err error)<span class="cov8" title="1">{
+        
+                if !govalidator.IsInt(context.Param("id")) </span><span class="cov8" title="1">{
+                        return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "id must be int"}
+                }</span>
+                <span class="cov8" title="1">u, err := strconv.Atoi(context.Param("id"))
+        
+                return context.JSON(http.StatusOK, c.GetFollowersCount(u))</span>
+                
+        }
+
+func (c *Controller) isFollowing(u1 int, u2 int) (following bool)<span class="cov8" title="1">{
+                var count int
+                c.DB.QueryRow(`select count(*) from followers where user_followed=$2 and user_following=$1`, u1, u2).Scan(&amp;count)
+                fmt.Println(count)
+                return count &gt; 0
+        }</span>
+        
+        
+
+func (c *Controller) Unfollow(context echo.Context) (err error)<span class="cov8" title="1">{
+        u := UserIDFromToken(context)
+        if !govalidator.IsInt(context.Param("id")) </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "id must be int"}
+        }</span>
+        <span class="cov8" title="1">toFollow, _ := strconv.Atoi(context.Param("id"))
+
+        if (toFollow == u)</span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "cant unfollow yourself"}
+        }</span>
+
+        <span class="cov8" title="1">err = c.DB.QueryRow(`select id from users where id=$1`, toFollow).Scan(&amp;toFollow)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == pgx.ErrNoRows</span><span class="cov8" title="1">{
+                        return echo.ErrNotFound
+                }</span>
+        }
+
+        <span class="cov8" title="1">var count int
+        err = c.DB.QueryRow(`select count(*) from followers where user_followed=$1 and user_following=$2`, toFollow, u).Scan(&amp;count)
+
+        if count &lt;= 0 </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "not following"}
+        }</span>
+
+        <span class="cov8" title="1">c.DB.Exec(`delete from followers where user_followed=$1 and user_following=$2`, toFollow, u)
+
+        return context.JSON(http.StatusOK, &amp;models.User{Followers: count-1})</span>
+}
+
+
+func (c *Controller) GetFollowingUsers(context echo.Context) (err error)<span class="cov8" title="1">{
+        
+                user := UserIDFromToken(context)
+
+                users := []*models.User{}
+
+                rows, _ := c.DB.Query(`SELECT users.id, users.email, users.username FROM users JOIN followers ON followers.user_following=$1 AND followers.user_followed=users.id`, user)
+                defer rows.Close()
+                
+                for rows.Next()</span><span class="cov8" title="1">{
+                        var id int
+                        var email, username string
+                        rows.Scan(&amp;id, &amp;email, &amp;username)
+                        u := &amp;models.User{ID: id, Email: email, Username: username}
+
+                        users = append(users, u)
+                }</span>
+                
+        
+                <span class="cov8" title="1">return context.JSON(http.StatusOK, users)</span>
+}
+
+func (c *Controller) GetFollowersUsers(context echo.Context) (err error)<span class="cov8" title="1">{
+        
+                user := UserIDFromToken(context)
+
+                users := []*models.User{}
+
+                rows, _ := c.DB.Query(`SELECT users.id, users.email, users.username FROM users JOIN followers ON followers.user_followed=$1 AND followers.user_following=users.id`, user)
+                defer rows.Close()
+                
+                for rows.Next()</span><span class="cov8" title="1">{
+                        var id int
+                        var email, username string
+                        rows.Scan(&amp;id, &amp;email, &amp;username)
+                        u := &amp;models.User{ID: id, Email: email, Username: username}
+
+                        users = append(users, u)
+                }</span>
+                
+        
+                <span class="cov8" title="1">return context.JSON(http.StatusOK, users)</span>
+}
+        
+
+func (c *Controller) GetFollowing(context echo.Context) (err error)<span class="cov8" title="1">{
+
+        u1 := UserIDFromToken(context)
+        if !govalidator.IsInt(context.Param("id")) </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "id must be int"}
+        }</span>
+        <span class="cov8" title="1">u2, err := strconv.Atoi(context.Param("id"))
+
+        return context.JSON(http.StatusOK, c.isFollowing(u1, u2))</span>
+        
+}
+
+func (c *Controller) GetUser(context echo.Context) (err error)<span class="cov8" title="1">{
+        if !govalidator.IsInt(context.Param("id")) </span><span class="cov8" title="1">{
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: "id must be int"}
+        }</span>
+        <span class="cov8" title="1">u, err := strconv.Atoi(context.Param("id"))
+
+        user := &amp;models.User{ID: u}
+        var email, username string
+        err = c.DB.QueryRow(`SELECT email, username FROM users WHERE users.id=$1`, u).Scan(&amp;email, &amp;username)
+        if err != nil </span><span class="cov8" title="1">{
+                fmt.Println(err)
+                return &amp;echo.HTTPError{Code: http.StatusBadRequest, Message: err}
+        }</span>
+        <span class="cov8" title="1">user.Email = email
+        user.Username = username
+        user.Followers = c.GetFollowersCount(user.ID)
+        return context.JSON(http.StatusOK, user)</span>
+        
+}
+
+func UserIDFromToken(c echo.Context) int<span class="cov8" title="1">{
+        u := strings.Replace(c.Request().Header.Get("Authorization"), "Bearer ", "", -1)
+        type Claims struct{
+                ID float64 `json:"id"`
+                Username string `json:"username"`
+                Expiring int `json:"expiring"`
+                jwt.StandardClaims
+        }
+        token, err := jwt.ParseWithClaims(u, &amp;Claims{},  func(token *jwt.Token) (interface{}, error) </span><span class="cov8" title="1">{
+                return []byte(JWTSecretKey), nil
+        }</span>)
+        <span class="cov8" title="1">if err != nil</span><span class="cov8" title="1">{
+                fmt.Println(err)
+                return -1
+        }</span>
+        <span class="cov8" title="1">claims := token.Claims.(*Claims)
+        return int(claims.ID)</span>
+}</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
