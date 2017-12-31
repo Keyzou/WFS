@@ -19,7 +19,7 @@ About
 ===
 Twitter clone done using **[Golang](https://golang.org/)** and **[VueJS](https://vuejs.org/)**. This project contains a fully working user system with follow/unfollows and a twitter-like feed (posts and comments) with a like/dislike system.
 
-This project is made by **Dean Ch&eacute;rif**, Matthieu Lanvert and Jerome Heitor.
+This project is made by **Dean Ch&eacute;rif**, and Joanna Ribeiro.
 
 Requirements
 ===
@@ -28,7 +28,7 @@ This package requires Go 1.8, and NodeJS/npm to run.
 Installation
 ===
 * Clone the repository:
-`git clone git@github.com:Keyzou/spt-go.git`
+`git clone git@github.com:Keyzou/WFS.git`
 
 * Enter the `src` folder and run `go run server.go` in order to run the api.
 * Enter the `front` folder and run `npm install` then `npm run dev` to run the front-end
